@@ -1,0 +1,46 @@
+# Self-sustaining scheduler. This is the "runs itself, no manual trigger"
+# requirement: every few hours GitHub Actions runs the full pipeline — re-poll
+# metrics, re-tag, re-score, regenerate recommendations — with nobody pressing
+# a button. The same job can be triggered by hand (workflow_dispatch) so you can
+# show it firing live on the walkthrough.
+#
+# Secrets (Settings > Secrets and variables > Actions) — never committed:
+#   DATABASE_URL, YOUTUBE_API_KEY, OPENAI_API_KEY (optional), TRACKED_CHANNELS
+
+name: content-intel pipeline
+
+on:
+  schedule:
+    - cron: "0 */2 * * *"        # every 2 hours (UTC). best-effort timing.
+  workflow_dispatch: {}           # manual "Run workflow" button for live demos
+
+# don't let a slow run overlap the next scheduled one
+concurrency:
+  group: pipeline
+  cancel-in-progress: false
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      TRACKED_CHANNELS: ${{ secrets.TRACKED_CHANNELS }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Apply migrations (idempotent)
+        run: alembic upgrade head
+
+      - name: Run pipeline (poll, tag, score, recommend)
+        run: python -m jobs.run_pipeline
