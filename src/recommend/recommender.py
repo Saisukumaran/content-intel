@@ -108,10 +108,19 @@ def generate(session, niche: str = "ai-agency", k: int = 5, min_n: int = 5) -> l
         key = (c["idea_topic"], c["idea_format"], c["idea_angle"])
         if key not in best or c["score"] > best[key]["score"]:
             best[key] = c
-    ranked = sorted(best.values(), key=lambda c: c["score"], reverse=True)[:k]
-    for i, c in enumerate(ranked, 1):
+    ranked_all = sorted(best.values(), key=lambda c: c["score"], reverse=True)
+    selected: list[dict] = []
+    angle_counts: dict[str, int] = {}
+    for c in ranked_all:
+        if len(selected) >= k:
+            break
+        angle = c["idea_angle"]
+        if not selected or angle_counts.get(angle, 0) < 2:
+            selected.append(c)
+            angle_counts[angle] = angle_counts.get(angle, 0) + 1
+    for i, c in enumerate(selected, 1):
         c["rank"] = i
-    return ranked
+    return selected
 
 
 def _supporting_videos(session, niche: str, topic: str, limit: int = 3) -> list[dict]:
